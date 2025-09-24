@@ -10,7 +10,8 @@ A modern, responsive photo-sharing application built with React, TailwindCSS, Su
 - ⚡ **Fast Image Loading** - Lazy loading with optimized Cloudinary URLs
 - 🖼️ **Image Gallery** - Grid layout with smooth animations
 - 🔍 **Lightbox Modal** - Full-size image viewing with navigation
-- ⬆️ **Easy Upload** - Drag & drop or click to upload with metadata
+- ⬆️ **Easy Upload** - Drag & drop or click to upload multiple photos at once
+- 📝 **Flexible Titles** - Optional titles with automatic fallback to filenames
 - 🗑️ **Photo Management** - Edit titles, descriptions, and delete photos (Admin only)
 - 📊 **Statistics Dashboard** - View photo counts and analytics (Admin only)
 - 🌙 **Dark Mode** - Automatic theme switching with system preference detection
@@ -145,9 +146,11 @@ APP_PASSWORD: "YOUR_NEW_PASSWORD"
 ### For Regular Users:
 1. **Login**: Enter the user password
 2. **View Photos**: Browse the gallery grid
-3. **Upload**: Click the + button to add new photos
-4. **View Full Size**: Click any photo for lightbox view
-5. **Navigation**: Use arrow keys or buttons in lightbox
+3. **Upload Single**: Click the + button and select one photo
+4. **Upload Multiple**: Hold Ctrl/Cmd and select multiple photos at once
+5. **Optional Titles**: Leave title empty to use filename, or add custom title
+6. **View Full Size**: Click any photo for lightbox view
+7. **Navigation**: Use arrow keys or buttons in lightbox
 
 ### For Admins:
 1. **Login**: Enter the admin password

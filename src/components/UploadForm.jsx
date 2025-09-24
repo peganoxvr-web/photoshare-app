@@ -8,8 +8,8 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
     title: '',
     description: ''
   });
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previewUrls, setPreviewUrls] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [error, setError] = useState('');
@@ -24,18 +24,38 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
   };
 
   const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.type.startsWith('image/')) {
-        setSelectedFile(file);
-        const reader = new FileReader();
-        reader.onload = (e) => setPreviewUrl(e.target.result);
-        reader.readAsDataURL(file);
-        setError('');
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      const validFiles = files.filter(file => file.type.startsWith('image/'));
+      
+      if (validFiles.length !== files.length) {
+        setError('Some files are not valid images. Only image files will be uploaded.');
       } else {
-        setError('Please select a valid image file');
-        setSelectedFile(null);
-        setPreviewUrl(null);
+        setError('');
+      }
+      
+      if (validFiles.length > 0) {
+        setSelectedFiles(validFiles);
+        
+        // Create preview URLs for all selected files
+        const previews = [];
+        let processedFiles = 0;
+        
+        validFiles.forEach((file, index) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            previews[index] = e.target.result;
+            processedFiles++;
+            
+            if (processedFiles === validFiles.length) {
+              setPreviewUrls(previews);
+            }
+          };
+          reader.readAsDataURL(file);
+        });
+      } else {
+        setSelectedFiles([]);
+        setPreviewUrls([]);
       }
     }
   };
@@ -46,23 +66,44 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => setPreviewUrl(e.target.result);
-      reader.readAsDataURL(file);
-      setError('');
-    } else {
-      setError('Please drop a valid image file');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      const validFiles = files.filter(file => file.type.startsWith('image/'));
+      
+      if (validFiles.length !== files.length) {
+        setError('Some files are not valid images. Only image files will be processed.');
+      } else {
+        setError('');
+      }
+      
+      if (validFiles.length > 0) {
+        setSelectedFiles(validFiles);
+        
+        // Create preview URLs for all dropped files
+        const previews = [];
+        let processedFiles = 0;
+        
+        validFiles.forEach((file, index) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            previews[index] = e.target.result;
+            processedFiles++;
+            
+            if (processedFiles === validFiles.length) {
+              setPreviewUrls(previews);
+            }
+          };
+          reader.readAsDataURL(file);
+        });
+      }
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!selectedFile || !formData.title.trim()) {
-      setError('Please select an image and provide a title');
+    if (selectedFiles.length === 0) {
+      setError('Please select at least one image');
       return;
     }
 
@@ -70,28 +111,51 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
     setError('');
     
     try {
-      // Step 1: Upload to Cloudinary
-      setUploadProgress('Uploading image...');
-      const cloudinaryResult = await uploadToCloudinary(selectedFile);
+      let successCount = 0;
+      let failCount = 0;
       
-      // Step 2: Save metadata to Supabase
-      setUploadProgress('Saving photo details...');
-      const photoData = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        cloudinary_url: cloudinaryResult.url,
-        public_id: cloudinaryResult.public_id
-      };
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const fileName = file.name.split('.')[0]; // Get filename without extension
+        
+        try {
+          // Step 1: Upload to Cloudinary
+          setUploadProgress(`Uploading image ${i + 1}/${selectedFiles.length}: ${fileName}`);
+          const cloudinaryResult = await uploadToCloudinary(file);
+          
+          // Step 2: Save metadata to Supabase
+          setUploadProgress(`Saving details ${i + 1}/${selectedFiles.length}: ${fileName}`);
+          const photoData = {
+            title: formData.title.trim() || fileName, // Use title or filename as fallback
+            description: formData.description.trim(),
+            cloudinary_url: cloudinaryResult.url,
+            public_id: cloudinaryResult.public_id
+          };
+          
+          await db.addPhoto(photoData);
+          successCount++;
+          
+        } catch (fileError) {
+          console.error(`Error uploading ${fileName}:`, fileError);
+          failCount++;
+        }
+      }
       
-      await db.addPhoto(photoData);
+      // Show results
+      if (successCount > 0) {
+        setUploadProgress(`Successfully uploaded ${successCount} photo${successCount > 1 ? 's' : ''}!`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        onUploadSuccess();
+        onClose();
+      }
       
-      // Success!
-      setUploadProgress('Complete!');
-      onUploadSuccess();
-      onClose();
+      if (failCount > 0) {
+        setError(`${failCount} photo${failCount > 1 ? 's' : ''} failed to upload. ${successCount > 0 ? 'Others uploaded successfully.' : ''}`);
+      }
+      
     } catch (error) {
       console.error('Upload error:', error);
-      setError('Failed to upload photo. Please try again.');
+      setError('Failed to upload photos. Please try again.');
     } finally {
       setIsUploading(false);
       setUploadProgress('');
@@ -114,7 +178,7 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
       >
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Upload Photo</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Upload Photos</h2>
             <button
               onClick={onClose}
               disabled={isUploading}
@@ -128,10 +192,10 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
             {/* File Upload Area */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Choose Image *
+                Choose Images
               </label>
               
-              {!previewUrl ? (
+              {previewUrls.length === 0 ? (
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={handleDragOver}
@@ -139,27 +203,47 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
                   className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-primary-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   <div className="text-4xl mb-2">📷</div>
-                  <p className="text-gray-600 dark:text-gray-400 mb-2">Click to select or drag & drop</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                  <p className="text-gray-600 dark:text-gray-400 mb-2">Click to select or drag & drop multiple images</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500">PNG, JPG, GIF up to 10MB each</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple files</p>
                 </div>
               ) : (
-                <div className="relative">
-                  <img
-                    src={previewUrl}
-                    alt="Preview"
-                    className="w-full h-64 object-cover rounded-lg"
-                  />
+                <div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                    {previewUrls.map((url, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={url}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-24 object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newFiles = selectedFiles.filter((_, i) => i !== index);
+                            const newUrls = previewUrls.filter((_, i) => i !== index);
+                            setSelectedFiles(newFiles);
+                            setPreviewUrls(newUrls);
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors text-sm"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      setPreviewUrl(null);
-                      fileInputRef.current.value = '';
-                    }}
-                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-primary-500 hover:text-primary-500 transition-colors"
                   >
-                    ×
+                    + Add more images
                   </button>
+                  
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 text-center">
+                    {selectedFiles.length} image{selectedFiles.length > 1 ? 's' : ''} selected
+                  </p>
                 </div>
               )}
               
@@ -167,6 +251,7 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleFileSelect}
                 className="hidden"
                 disabled={isUploading}
@@ -176,7 +261,7 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
             {/* Title Input */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Title *
+                Title (Optional)
               </label>
               <input
                 type="text"
@@ -185,10 +270,12 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
                 value={formData.title}
                 onChange={handleInputChange}
                 className="input-field"
-                placeholder="Give your photo a title"
-                required
+                placeholder="Give your photos a common title (or leave empty to use filename)"
                 disabled={isUploading}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                If left empty, each photo will use its filename as the title
+              </p>
             </div>
 
             {/* Description Input */}
@@ -203,7 +290,7 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
                 onChange={handleInputChange}
                 rows="3"
                 className="input-field resize-none"
-                placeholder="Add a description for your photo"
+                placeholder="Add a common description for all photos"
                 disabled={isUploading}
               />
             </div>
@@ -245,14 +332,17 @@ const UploadForm = ({ onClose, onUploadSuccess }) => {
               </button>
               <button
                 type="submit"
-                disabled={isUploading || !selectedFile || !formData.title.trim()}
+                disabled={isUploading || selectedFiles.length === 0}
                 className={`flex-1 btn-primary ${
-                  isUploading || !selectedFile || !formData.title.trim()
+                  isUploading || selectedFiles.length === 0
                     ? 'opacity-50 cursor-not-allowed'
                     : ''
                 }`}
               >
-                {isUploading ? 'Uploading...' : 'Upload Photo'}
+                {isUploading 
+                  ? 'Uploading...' 
+                  : `Upload ${selectedFiles.length} Photo${selectedFiles.length > 1 ? 's' : ''}`
+                }
               </button>
             </div>
           </form>

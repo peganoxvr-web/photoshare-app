@@ -11,7 +11,8 @@ const FloatingUploadButton = ({ onClick }) => {
       transition={{ type: "spring", stiffness: 400, damping: 17 }}
       onClick={onClick}
       className="fixed bottom-6 right-6 w-16 h-16 bg-primary-500 hover:bg-primary-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40 group"
-      aria-label="Upload photo"
+      aria-label="Upload photos"
+      title="Upload photos"
     >
       <svg
         className="w-8 h-8 transition-transform group-hover:scale-110"
